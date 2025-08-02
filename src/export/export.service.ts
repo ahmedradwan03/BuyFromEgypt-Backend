@@ -1,32 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-
-export interface CustomerRecommendation {
-  ProductID: string;
-  Description: string;
-  Category: string;
-  UnitPrice: number;
-  Score: number;
-  RecommendationReason: string;
-}
-
-export interface BusinessProductRecommendation {
-  ProductID: string;
-  Description: string;
-  Category: string;
-  UnitPrice: number;
-  Score: number;
-  RecommendationReason: string;
-}
-
-export interface BusinessPartnerRecommendation {
-  PartnerID: string;
-  PartnerName: string;
-  Industry: string;
-  Location: string;
-  Score: number;
-  PartnershipReason: string;
-}
+import { BusinessPartnerRecommendation, BusinessProductRecommendation, CustomerRecommendation } from './interfaces/recommendation';
 
 @Injectable()
 export class ExportService {
@@ -89,8 +63,6 @@ export class ExportService {
 
     const products = await this.prisma.product.findMany({
       where: {
-        // active: true,
-        // available: true,
         ownerId: { not: business.userId },
       },
       include: {
@@ -106,7 +78,12 @@ export class ExportService {
         userId: { not: business.userId },
         type: { in: ['EXPORTER', 'IMPORTER'] },
         active: true,
-        industrySector: business.industrySector ? { contains: business.industrySector, mode: 'insensitive' } : undefined,
+        industrySector: business.industrySector
+          ? {
+              contains: business.industrySector,
+              mode: 'insensitive',
+            }
+          : undefined,
       },
       take: Math.min(numPartnerRecommendations, 50),
       orderBy: { createdAt: 'desc' },

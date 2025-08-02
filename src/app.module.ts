@@ -48,10 +48,9 @@ import { NotificationModule } from './notification/notification.module';
     EgyptianEconomicContextModule,
     SyncModule,
     ExportModule,
-    NotificationModule
+    NotificationModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],
-  //  , { provide: APP_GUARD, useClass: RolesGuard }],
 })
 export class AppModule {}

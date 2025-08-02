@@ -6,6 +6,7 @@ import { ApiBody, ApiResponse, ApiTags, ApiBearerAuth, ApiParam } from '@nestjs/
 import { Request } from 'express';
 import { Comment } from './entities/comment.entity';
 import { AuthGuard } from '../auth/guards/auth.guard';
+import { AuthenticatedRequest } from '../auth/interfaces/auth-request.interface';
 
 @ApiTags('comments')
 @ApiBearerAuth()
@@ -24,7 +25,7 @@ export class CommentsController {
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Bad Request' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Post not found' })
   @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Unauthorized' })
-  async create(@Req() req: Request & { user: { userId: string } }, @Body() createCommentDto: CreateCommentDto) {
+  async create(@Req() req: AuthenticatedRequest, @Body() createCommentDto: CreateCommentDto) {
     return this.commentsService.create(req.user.userId, createCommentDto);
   }
 
@@ -68,15 +69,10 @@ export class CommentsController {
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid input' })
   async update(
     @Req()
-    req: Request & {
-      user: { userId: string };
-    },
+    req: AuthenticatedRequest,
     @Param('commentId') commentId: string,
     @Body() updateCommentDto: UpdateCommentDto
   ) {
-    if (!updateCommentDto || !updateCommentDto.content) {
-      throw new NotFoundException('Comment content is required');
-    }
     return this.commentsService.update(commentId, req.user.userId, updateCommentDto);
   }
 
@@ -95,9 +91,7 @@ export class CommentsController {
   @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Unauthorized' })
   async remove(
     @Req()
-    req: Request & {
-      user: { userId: string; role: string };
-    },
+    req: AuthenticatedRequest,
     @Param('commentId') commentId: string
   ) {
     return this.commentsService.delete(commentId, req.user.userId, req.user.role);

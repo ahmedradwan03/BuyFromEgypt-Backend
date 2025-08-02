@@ -1,6 +1,7 @@
 import { Controller, Get, Param, ParseUUIDPipe, Req, UseGuards } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import { AuthGuard } from '../auth/guards/auth.guard';
+import { AuthenticatedRequest } from '../auth/interfaces/auth-request.interface';
 
 @Controller('notifications')
 export class NotificationController {
@@ -8,7 +9,7 @@ export class NotificationController {
 
   @UseGuards(AuthGuard)
   @Get()
-  async getUserNotifications(@Req() req: Request & { user: { userId: string } }) {
+  async getUserNotifications(@Req() req: AuthenticatedRequest) {
     return this.notificationService.getMyNotifications(req.user.userId);
   }
 }

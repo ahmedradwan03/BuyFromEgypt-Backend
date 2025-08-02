@@ -6,11 +6,13 @@ import { Comment } from './entities/comment.entity';
 import { RoleEnum } from '../common/enums/role.enum';
 import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../common/enums/Notification.enum';
+import { ValidationService } from '../common/validation/validation.service';
 
 @Injectable()
 export class CommentsService {
   constructor(
     private prisma: PrismaService,
+    private validationService: ValidationService,
     private notificationService: NotificationService
   ) {}
 
@@ -28,9 +30,7 @@ export class CommentsService {
       },
     });
 
-    if (!post) {
-      throw new NotFoundException('Post not found');
-    }
+    if (!post) throw new NotFoundException('Post not found');
 
     const comment = await this.prisma.comment.create({
       data: {
@@ -60,10 +60,6 @@ export class CommentsService {
   }
 
   async update(commentId: string, userId: string, updateCommentDto: UpdateCommentDto): Promise<Comment> {
-    if (!updateCommentDto || !updateCommentDto.content) {
-      throw new NotFoundException('Comment content is required');
-    }
-
     const comment = await this.prisma.comment.findUnique({
       where: { commentId },
     });
@@ -76,27 +72,23 @@ export class CommentsService {
       throw new NotFoundException('You can only edit your own comments');
     }
 
-    try {
-      const updatedComment = await this.prisma.comment.update({
-        where: { commentId },
-        data: {
-          content: updateCommentDto.content,
-        },
-        include: {
-          user: {
-            select: {
-              userId: true,
-              name: true,
-              profileImage: true,
-            },
+    const updatedComment = await this.prisma.comment.update({
+      where: { commentId },
+      data: {
+        content: updateCommentDto.content,
+      },
+      include: {
+        user: {
+          select: {
+            userId: true,
+            name: true,
+            profileImage: true,
           },
         },
-      });
+      },
+    });
 
-      return updatedComment;
-    } catch (error) {
-      throw new NotFoundException('Failed to update comment');
-    }
+    return updatedComment;
   }
 
   async delete(commentId: string, userId: string, role: string): Promise<{ message: string }> {
@@ -139,12 +131,8 @@ export class CommentsService {
   }
 
   async getAll(postId: string): Promise<Comment[]> {
-    const post = await this.prisma.post.findUnique({
-      where: { postId },
-    });
-    if (!post) {
-      throw new NotFoundException('Post not found');
-    }
+    await this.validationService.validatePostExists(postId);
+
     const comments = await this.prisma.comment.findMany({
       where: { postId },
       include: {

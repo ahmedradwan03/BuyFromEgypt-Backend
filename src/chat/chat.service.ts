@@ -8,7 +8,7 @@ import { ConversationType } from '@prisma/client';
 export class ChatService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getOrCreatePrivateConversation(userId1: string, userId2: string) {
+   private async getOrCreatePrivateConversation(userId1: string, userId2: string) {
     const users = await this.prisma.user.findMany({
       where: { userId: { in: [userId1, userId2] } },
       select: { userId: true },

@@ -3,16 +3,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ValidationService } from '../common/validation/validation.service';
 import { NotificationType } from '../common/enums/Notification.enum';
 import { NotificationService } from '../notification/notification.service';
-
-const RATEABLE_ENTITIES = ['post', 'product'] as const;
-export type RateableEntity = (typeof RATEABLE_ENTITIES)[number];
-
-interface RatingInput {
-  userId: string;
-  entityId: string;
-  value: number;
-  comment: string;
-}
+import { Rate, RATEABLE_ENTITIES, RateableEntity } from './entities/rating.entity';
+import { RatingInput } from './dto/rating-input.dto';
 
 @Injectable()
 export class RatingService {
@@ -42,7 +34,14 @@ export class RatingService {
     });
   }
 
-  async rate(entityType: RateableEntity, { userId, entityId, value, comment }: RatingInput) {
+  async rate(
+    entityType: RateableEntity,
+    { userId, entityId, value, comment }: RatingInput
+  ): Promise<
+    Rate & {
+      message: string;
+    }
+  > {
     if (!RATEABLE_ENTITIES.includes(entityType)) throw new BadRequestException('Invalid entity type');
     await this.validateEntity(entityType, entityId);
 
@@ -103,7 +102,7 @@ export class RatingService {
     };
   }
 
-  async getEntityRating(entityType: RateableEntity, entityId: string, userId: string) {
+  async getEntityRating(entityType: RateableEntity, entityId: string, userId: string): Promise<Rate> {
     if (!RATEABLE_ENTITIES.includes(entityType)) throw new BadRequestException('Invalid entity type');
     const idField = this.getIdField(entityType);
 
@@ -125,7 +124,6 @@ export class RatingService {
     });
 
     return {
-      message: 'Rating fetched successfully',
       averageRating: _avg.value ?? 0,
       totalReviews: _count,
       userRating: userRating?.value ?? null,
@@ -135,7 +133,7 @@ export class RatingService {
     };
   }
 
-  async getAllRatings(entityType: RateableEntity, entityId: string) {
+  async getAllRatings(entityType: RateableEntity, entityId: string): Promise<Rate[]> {
     if (!RATEABLE_ENTITIES.includes(entityType)) throw new BadRequestException('Invalid entity type');
     const idField = this.getIdField(entityType);
 

@@ -2,7 +2,6 @@ import { Controller, Post, Get, Delete, Param, Body, UseGuards, Req, HttpCode, H
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
-import { Request } from 'express';
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RoleEnum } from '../common/enums/role.enum';
@@ -10,6 +9,8 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { AuthenticatedRequest } from '../auth/interfaces/auth-request.interface';
+
 
 @Controller('categories')
 export class CategoriesController {
@@ -19,7 +20,7 @@ export class CategoriesController {
   @Roles(RoleEnum.ADMIN)
   @UseGuards(AuthGuard, RolesGuard)
   @UseInterceptors(FileInterceptor('image'))
-  async create(@Req() req: Request & { user: { userId: string } }, @Body() createCategoryDto: CreateCategoryDto, @UploadedFile() image?: Express.Multer.File) {
+  async create(@Req() req: AuthenticatedRequest, @Body() createCategoryDto: CreateCategoryDto, @UploadedFile() image?: Express.Multer.File) {
     return this.categoriesService.create(req.user.userId, createCategoryDto, image);
   }
 

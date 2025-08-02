@@ -5,6 +5,10 @@ export class Category {
   categoryId: string;
   name: string;
   description?: string | null;
-  user?: User;
+  user?: Pick<User, 'userId' | 'name' | 'email' | 'role' | 'type' | 'active'>;
   products?: Product[];
+  createdAt: Date;
+  updatedAt: Date;
 }
+
+export type CategoryPreview = Pick<Category, 'categoryId' | 'name' | 'description'>;

@@ -1,15 +1,14 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UpdateUserForAdminDto } from './dto/update-user.dto';
-import { UpdateUserDto } from './dto/update-userForAdmin.dto';
 import { ValidationService } from '../common/validation/validation.service';
 import { MailService } from '../MailService/mail.service';
-import { User } from '@prisma/client';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ProfileResponse } from './interfaces/profile.interface';
 import { CloudinaryService, UploadedImageInfo } from '../common/modules/cloudinary/cloudinary.service';
-import * as process from 'process';
+import { User } from './entities/user.entity';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateUserForAdminDto } from './dto/update-userForAdmin.dto';
 
 @Injectable()
 export class UsersService {
@@ -20,12 +19,12 @@ export class UsersService {
     private cloudinaryService: CloudinaryService
   ) {}
 
-  async findAll() {
+  async findAll(): Promise<User[]> {
     return this.prisma.user.findMany();
   }
 
   async getUser(userId: string): Promise<User> {
-    const user = await this.prisma.user.findUnique({ where: { userId }, include: { ratings: true } });
+    const user = await this.prisma.user.findUnique({ where: { userId } });
     if (!user) throw new NotFoundException(`User with ID '${userId}' not found.`);
     return user;
   }
@@ -36,11 +35,13 @@ export class UsersService {
   }
 
   async updateUser<T extends UpdateUserDto | UpdateUserForAdminDto>(userId: string, updateDto: T): Promise<User> {
+    await this.validationService.validateUserExists(userId);
     const updatedUser = await this.prisma.user.update({ where: { userId }, data: { ...updateDto } });
     return updatedUser;
   }
 
   async deleteUser(userId: string): Promise<string> {
+    await this.validationService.validateUserExists(userId);
     await this.prisma.user.delete({ where: { userId } });
     return `User with ID ${userId} has been deleted successfully.`;
   }
@@ -76,49 +77,19 @@ export class UsersService {
   async updateProfile(userId: string, updateProfileDto: UpdateProfileDto, profileImage?: Express.Multer.File): Promise<User> {
     await this.validationService.validateUserExists(userId);
 
-    const updateData: any = {};
+    const updateData: Partial<User> = {};
 
     if (profileImage) {
       const user = await this.prisma.user.findUnique({ where: { userId } });
-      if (user && user.profileImage) {
-        const publicId = user.profileImage.split('/').pop()?.split('.')[0];
-        if (publicId) {
-          const fullPublicId = `${process.env.SITE_NAME}/users/profile/${publicId}`;
-          await this.cloudinaryService.deleteImage(fullPublicId);
-        }
-      }
-      const uploadedImage: UploadedImageInfo = await this.cloudinaryService.uploadImage(profileImage, `${process.env.SITE_NAME}/users/profile`);
-      updateData.profileImage = uploadedImage.url;
-    }
 
-    if (updateProfileDto) {
-      if (updateProfileDto.name !== undefined) {
-        updateData.name = updateProfileDto.name;
+      const publicId = user?.profileImage?.split('/').pop()?.split('.')[0];
+      if (publicId) {
+        const fullPublicId = `${process.env.SITE_NAME}/users/profile/${publicId}`;
+        await this.cloudinaryService.deleteImage(fullPublicId);
       }
-      if (updateProfileDto.phoneNumber !== undefined) {
-        updateData.phoneNumber = updateProfileDto.phoneNumber;
-      }
-      if (updateProfileDto.country !== undefined) {
-        updateData.country = updateProfileDto.country;
-      }
-      if (updateProfileDto.age !== undefined) {
-        updateData.age = updateProfileDto.age;
-      }
-      if (updateProfileDto.address !== undefined) {
-        updateData.address = updateProfileDto.address;
-      }
-      if (updateProfileDto.about !== undefined) {
-        updateData.about = updateProfileDto.about;
-      }
-      if ((updateProfileDto as any).registrationNumber !== undefined) {
-        updateData.registrationNumber = (updateProfileDto as any).registrationNumber;
-      }
-      if ((updateProfileDto as any).industrySector !== undefined) {
-        updateData.industrySector = (updateProfileDto as any).industrySector;
-      }
-      if ((updateProfileDto as any).commercial !== undefined) {
-        updateData.commercial = (updateProfileDto as any).commercial;
-      }
+
+      const uploaded = await this.cloudinaryService.uploadImage(profileImage, `${process.env.SITE_NAME}/users/profile`);
+      updateData.profileImage = uploaded.url;
     }
 
     if (Object.keys(updateData).length === 0) {
@@ -129,17 +100,16 @@ export class UsersService {
       const existingUser = await this.prisma.user.findUnique({
         where: { phoneNumber: updateData.phoneNumber },
       });
+
       if (existingUser && existingUser.userId !== userId) {
         throw new ConflictException('Phone number is already taken');
       }
     }
 
-    const updatedUser = await this.prisma.user.update({
+    return this.prisma.user.update({
       where: { userId },
       data: updateData,
     });
-
-    return updatedUser;
   }
 
   async getUserProfile(userId: string): Promise<ProfileResponse> {

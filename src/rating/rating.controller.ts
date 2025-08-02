@@ -1,8 +1,10 @@
 import { Body, Controller, Param, Post, Req, UseGuards, Get, Query } from '@nestjs/common';
-import { RateableEntity, RatingService } from './rating.service';
+import { RatingService } from './rating.service';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { AuthGuard } from '../auth/guards/auth.guard';
-import { ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
+import { AuthenticatedRequest } from '../auth/interfaces/auth-request.interface';
+import { RateableEntity } from './entities/rating.entity';
 
 @Controller('rating')
 export class RatingController {
@@ -15,9 +17,7 @@ export class RatingController {
     @Param('entityId') entityId: string,
     @Body() createRatingDto: CreateRatingDto,
     @Req()
-    req: Request & {
-      user: { userId: string };
-    }
+    req: AuthenticatedRequest
   ) {
     return this.ratingService.rate(entityType, {
       userId: req.user.userId,
@@ -32,10 +32,14 @@ export class RatingController {
   @ApiBearerAuth()
   @ApiParam({ name: 'entityType', enum: ['post', 'product'], description: 'Type of the entity to rate' })
   @ApiParam({ name: 'entityId', description: 'ID of the entity to rate' })
-  @ApiResponse({ status: 200, description: 'Returns average rating, total reviews, and user rating', schema: { example: { averageRating: 3, totalReviews: 2, userRating: 4 } } })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns average rating, total reviews, and user rating',
+    schema: { example: { averageRating: 3, totalReviews: 2, userRating: 4 } },
+  })
   @ApiResponse({ status: 400, description: 'Invalid entity type' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getEntityRating(@Param('entityType') entityType: RateableEntity, @Param('entityId') entityId: string, @Req() req: Request & { user: { userId: string } }) {
+  async getEntityRating(@Param('entityType') entityType: RateableEntity, @Param('entityId') entityId: string, @Req() req: AuthenticatedRequest) {
     return this.ratingService.getEntityRating(entityType, entityId, req.user.userId);
   }
 

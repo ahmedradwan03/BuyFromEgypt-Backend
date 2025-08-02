@@ -2,17 +2,17 @@ import { Controller, Get, Post, Body, Put, UseGuards, Req, Param, Delete, Patch,
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ApiBody, ApiResponse, ApiParam } from '@nestjs/swagger';
-import { UpdateUserDto } from './dto/update-userForAdmin.dto';
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { RoleEnum, User } from '@prisma/client';
-import { Request } from 'express';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { UpdateUserForAdminDto } from './dto/update-user.dto';
 import { CommentLikesService } from 'src/comment-likes/comment-likes.service';
-import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ProfileResponse } from './interfaces/profile.interface';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { AuthenticatedRequest } from '../auth/interfaces/auth-request.interface';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateUserForAdminDto } from './dto/update-userForAdmin.dto';
 
 @Controller('users')
 export class UsersController {
@@ -36,7 +36,7 @@ export class UsersController {
   @UseGuards(AuthGuard)
   @ApiResponse({ status: HttpStatus.OK, description: 'User profile retrieved successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'User not found' })
-  async getUserProfile(@Req() req: Request & { user: { userId: string } }): Promise<ProfileResponse> {
+  async getUserProfile(@Req() req: AuthenticatedRequest): Promise<ProfileResponse> {
     return this.usersService.getUserProfile(req.user.userId);
   }
 
@@ -47,7 +47,7 @@ export class UsersController {
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Bad Request' })
   @ApiResponse({ status: HttpStatus.INTERNAL_SERVER_ERROR, description: 'Internal Server Error' })
   @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Please Login and try again' })
-  async updateUser(@Req() req: Request & { user: { userId: string } }, @Body() updateUserDto: UpdateUserDto) {
+  async updateUser(@Req() req: AuthenticatedRequest, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.updateUser(req.user.userId, updateUserDto);
   }
 
@@ -58,7 +58,7 @@ export class UsersController {
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid input data' })
   @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Email or phone number already taken' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Not authorized to update this profile' })
-  async updateProfile(@Req() req: Request & { user: { userId: string } }, @Body() updateProfileDto: UpdateProfileDto, @UploadedFile() profileImage?: Express.Multer.File): Promise<User> {
+  async updateProfile(@Req() req: AuthenticatedRequest, @Body() updateProfileDto: UpdateProfileDto, @UploadedFile() profileImage?: Express.Multer.File) {
     return this.usersService.updateProfile(req.user.userId, updateProfileDto, profileImage);
   }
 

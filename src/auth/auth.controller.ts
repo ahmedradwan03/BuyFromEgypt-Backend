@@ -28,7 +28,7 @@ export class AuthController {
   @Post('login')
   @ApiResponse({ status: HttpStatus.OK, description: 'User successfully logged in' })
   @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Invalid data' })
-  async login(@Body() loginDto: LoginDto): Promise<{ user: { userId: string; name: string; email: string; role: string; profileImage: string | null }; token: string }> {
+  async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
   }
 
@@ -73,7 +73,12 @@ export class AuthController {
     status: HttpStatus.UNAUTHORIZED,
     description: 'Invalid or expired OTP',
   })
-  async verifyOtpAndSendResetLink(@Headers('platform') header: string, @Body() verifyOtpDto: VerifyOtpDto): Promise<{ message: string }> {
+  async verifyOtpAndSendResetLink(
+    @Headers('platform') header: string,
+    @Body() verifyOtpDto: VerifyOtpDto
+  ): Promise<{
+    message: string;
+  }> {
     return this.authService.verifyOtpAndSendResetLink(header, verifyOtpDto);
   }
 

@@ -4,6 +4,7 @@ import { SocialMediaService } from './social-media.service';
 import { CreateSocialMediaDto } from './dto/create-social-media.dto';
 import { UpdateSocialMediaDto } from './dto/update-social-media.dto';
 import { AuthGuard } from '../auth/guards/auth.guard';
+import { AuthenticatedRequest } from '../auth/interfaces/auth-request.interface';
 
 @ApiTags('social-media')
 @Controller('social-media')
@@ -13,13 +14,13 @@ export class SocialMediaController {
 
   @Post()
   @ApiResponse({ status: 201, description: 'Social media link created successfully' })
-  create(@Request() req, @Body() createSocialMediaDto: CreateSocialMediaDto) {
+  create(@Request() req: AuthenticatedRequest, @Body() createSocialMediaDto: CreateSocialMediaDto) {
     return this.socialMediaService.create(req.user.userId, createSocialMediaDto);
   }
 
   @Get()
   @ApiResponse({ status: 200, description: 'Return all social media links' })
-  findAll(@Request() req) {
+  findAll(@Request() req: AuthenticatedRequest) {
     return this.socialMediaService.findAll(req.user.userId);
   }
 
@@ -43,13 +44,13 @@ export class SocialMediaController {
 
   @Delete()
   @ApiResponse({ status: 200, description: 'All social media links deleted successfully' })
-  removeAll(@Request() req) {
+  removeAll(@Request() req: AuthenticatedRequest) {
     return this.socialMediaService.removeAll(req.user.userId);
   }
 
   @Get('platform/:platform')
   @ApiResponse({ status: 200, description: 'Return social media link for platform' })
-  findByPlatform(@Request() req, @Param('platform') platform: string) {
+  findByPlatform(@Request() req: AuthenticatedRequest, @Param('platform') platform: string) {
     return this.socialMediaService.findByPlatform(req.user.userId, platform);
   }
 }

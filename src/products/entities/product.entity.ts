@@ -1,6 +1,6 @@
 import { ProductImage } from './productImage.entity';
 import { User } from '../../users/entities/user.entity';
-import { Category } from '../../categories/entities/category.entity';
+import { CategoryPreview } from '../../categories/entities/category.entity';
 
 export class Product {
   productId: string;
@@ -12,15 +12,12 @@ export class Product {
   active: boolean;
   rating?: number | null;
   reviewCount: number;
-  owner?: User;
-  category?: Category;
-  approvedBy?: User;
+  owner?: Pick<User, 'userId' | 'name' | 'email' | 'role'>;
+  approvedBy?: Pick<User, 'userId' | 'name' | 'email' | 'role'>;
+  category?: CategoryPreview;
   approvedAt?: Date | null;
-  // certifications: Certification[];
-  // orders: Order[];
-  // posts: Post[];
   images?: ProductImage[];
-  cloudFolder?: string | null
+  cloudFolder?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

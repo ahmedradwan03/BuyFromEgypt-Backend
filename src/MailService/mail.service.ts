@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import { CreateMailDto } from './dto/CreateMailDto';
 import { mailConstants } from '../common/constants';
+import { otpTemplate } from './templates/otp.template';
+import { resetLinkTemplate } from './templates/reset-link.template';
 
 @Injectable()
 export class MailService {
@@ -23,16 +25,7 @@ export class MailService {
       from: `"Buy From Egypt" <${process.env.MAIL_USER}>`,
       to: email,
       subject: 'Password Reset OTP Code',
-      html: `
-        <h1>Password Reset Request</h1>
-        <p>Hello,</p>
-        <p>We received a request to reset your password. Please use the following OTP code to continue with your password reset:</p>
-        <h2 style="background-color: #f4f4f4; padding: 10px; text-align: center;">${otpCode}</h2>
-        <p>This code will expire in 5 minutes.</p>
-        <p>If you did not request a password reset, please ignore this email or contact support if you have any concerns.</p>
-        <p>Thank you,</p>
-        <p>The Team</p>
-      `,
+      html: otpTemplate(otpCode),
     };
     await this.transporter.sendMail(mailOptions);
   }
@@ -42,16 +35,7 @@ export class MailService {
       from: `"Buy From Egypt" <${process.env.MAIL_USER}>`,
       to: email,
       subject: 'Password Reset Link',
-      html: `
-        <h1>Password Reset Link</h1>
-        <p>Hello,</p>
-        <p>We have verified your OTP code. Please click the link below to set your new password:</p>
-        <p><a href="${resetLink}" style="background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px;">Reset Your Password</a></p>
-        <p>This link will expire in 5 minutes.</p>
-        <p>If you did not request a password reset, please ignore this email or contact support if you have any concerns.</p>
-        <p>Thank you,</p>
-        <p>The Team</p>
-      `,
+      html: resetLinkTemplate(resetLink),
     };
 
     await this.transporter.sendMail(mailOptions);

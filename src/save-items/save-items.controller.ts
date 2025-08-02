@@ -1,8 +1,5 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
 import { SaveItemsService } from './save-items.service';
-import { CreateSaveItemDto } from './dto/create-save-item.dto';
-import { UpdateSaveItemDto } from './dto/update-save-item.dto';
-import { PaginationDto } from '../common/dto/pagination.dto';
 import { FilterProductsDto } from '../common/dto/filter-products.dto';
 
 @Controller('save-items')
