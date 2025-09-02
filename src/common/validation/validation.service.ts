@@ -8,7 +8,14 @@ export class ValidationService {
 
   async validateUserExists(userId: string): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { userId } });
-    if (!user) throw new NotFoundException('User not found.');
+    if (!user) throw new NotFoundException(`User with ID ${userId} not found.`);
+  }
+
+  async validateCommentExists(commentId: string) {
+    const comment = await this.prisma.comment.findUnique({
+      where: { commentId },
+    });
+    if (!comment) throw new NotFoundException(`Comment with ID ${commentId} not found`);
   }
 
   async validateProductExists(productId: string): Promise<void> {

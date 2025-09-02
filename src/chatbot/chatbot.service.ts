@@ -35,6 +35,8 @@ export class ChatbotService {
   }
 
   async resetConversation(sessionId: string): Promise<any> {
+    if (!sessionId) throw new BadRequestException('Session ID is required as a query parameter.');
+
     this.logger.log(`Resetting conversation for session: ${sessionId}`);
     try {
       const response = await firstValueFrom(this.httpService.post(`${this.baseUrl}/chat/reset?session_id=${sessionId}`));

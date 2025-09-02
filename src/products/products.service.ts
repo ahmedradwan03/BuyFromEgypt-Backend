@@ -3,7 +3,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { Product } from './entities/product.entity';
-import slugify from 'slugify';
 import * as process from 'node:process';
 import { CloudinaryService } from '../common/modules/cloudinary/cloudinary.service';
 import { v4 as uuid } from 'uuid';
@@ -12,6 +11,8 @@ import { FilterProductsDto, SortField, SortOrder } from '../common/dto/filter-pr
 import { PaginationService } from '../common/modules/pagination/pagination.service';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
 import { FilterService } from '../common/modules/filter/filter.service';
+import slugify from 'slugify';
+import { ValidationService } from '../common/validation/validation.service';
 
 @Injectable()
 export class ProductsService {
@@ -19,8 +20,160 @@ export class ProductsService {
     private readonly prisma: PrismaService,
     private cloudinaryService: CloudinaryService,
     private paginationService: PaginationService,
-    private filterService: FilterService
+    private filterService: FilterService,
+    private validationService: ValidationService
   ) {}
+
+  private async findAndValidateProduct(productId: string, userId: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { productId },
+      include: { images: true, owner: true },
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Product with ID ${productId} not found!`);
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with ID ${userId} not found!`);
+    }
+
+    if (product.ownerId !== userId && user.role !== RoleEnum.ADMIN) {
+      throw new ForbiddenException(`You don't have permission to update this product!`);
+    }
+    return product;
+  }
+
+  private async validateCategory(categoryId: string) {
+    const category = await this.prisma.category.findUnique({
+      where: { categoryId },
+    });
+
+    if (!category) {
+      throw new NotFoundException(`Category with ID ${categoryId} not found`);
+    }
+  }
+
+  private async handleSlugUpdate(product: Product, updateProductDto: UpdateProductDto): Promise<string> {
+    if (!updateProductDto.name || updateProductDto.name === product.name) {
+      return product.slug;
+    }
+
+    const slug = slugify(updateProductDto.name);
+    const nameTaken = await this.prisma.product.findFirst({
+      where: {
+        slug,
+        NOT: { productId: product.productId },
+      },
+    });
+
+    if (nameTaken) {
+      throw new ConflictException(`Product name "${updateProductDto.name}" already exists`);
+    }
+
+    return slug;
+  }
+
+  private async handleImageUpdates(product: Product, updateProductDto: UpdateProductDto, files?: Express.Multer.File[]): Promise<any[]> {
+    if (updateProductDto.imagesToDelete?.length && product.images?.length) {
+      await this.deleteProductImages(product, updateProductDto.imagesToDelete);
+    }
+
+    if (!files?.length) {
+      return [];
+    }
+
+    if (product.images?.length) {
+      await this.deleteAllProductImages(product);
+    }
+
+    if (!product.cloudFolder) {
+      console.warn(`Product ${product.productId} has no cloudFolder, skipping new image upload.`);
+      return [];
+    }
+
+    return await this.cloudinaryService.uploadImages(files, product.cloudFolder);
+  }
+
+  private async deleteProductImages(product: Product, imageIds: string[]) {
+    if (!product.images) return;
+    const imagesToDelete = product.images.filter((img) => imageIds.includes(img.id));
+
+    await Promise.all([
+      ...imagesToDelete.map((img) => this.cloudinaryService.deleteImage(img.id)),
+      this.prisma.productImage.deleteMany({
+        where: {
+          id: { in: imageIds },
+          productId: product.productId,
+        },
+      }),
+    ]);
+  }
+
+  private async deleteAllProductImages(product: Product) {
+    if (!product.images) return;
+    try {
+      await Promise.all([
+        ...product.images.map((image) => this.cloudinaryService.deleteImage(image.id)),
+        this.prisma.productImage.deleteMany({
+          where: {
+            productId: product.productId,
+          },
+        }),
+      ]);
+    } catch (error) {
+      console.error('Error deleting existing images from Cloudinary during product update:', error);
+    }
+  }
+
+  private async validateProductForDeletion(productId: string, userId: string, role: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { productId },
+      include: { images: true, owner: true },
+    });
+
+    if (!product) {
+      throw new NotFoundException({
+        success: false,
+        message: `Product with ID ${productId} not found!`,
+        error: 'Not Found',
+      });
+    }
+
+    if (product.ownerId !== userId && role !== RoleEnum.ADMIN) {
+      throw new ForbiddenException({
+        success: false,
+        message: "You don't have permission to delete this product!",
+        error: 'Forbidden',
+      });
+    }
+
+    return product;
+  }
+
+  private async deleteProductAssets(product: Product) {
+    if (product.images?.length) {
+      try {
+        await Promise.all(product.images.map((image) => this.cloudinaryService.deleteImage(image.id)));
+      } catch (error) {
+        console.error('Error deleting images from Cloudinary:', error);
+        console.log('Continuing with product deletion despite image deletion error');
+      }
+    }
+
+    if (product.cloudFolder) {
+      try {
+        await this.cloudinaryService.deleteFolder(product.cloudFolder);
+      } catch (error) {
+        console.error('Error deleting folder from Cloudinary:', error);
+        console.log('Continuing with product deletion despite folder deletion error');
+      }
+    }
+  }
 
   async findAll(filters?: FilterProductsDto): Promise<PaginatedResponse<Product>> {
     const { where, orderBy } = this.filterService.buildProductFilter(filters || {});
@@ -119,13 +272,13 @@ export class ProductsService {
         },
       });
       return newProduct;
-    } catch (err: any) {
+    } catch (err) {
       await this.cloudinaryService.deleteFolder(cloudFolder);
       throw new BadRequestException(`Failed to create product: ${err.message || 'Unknown error'}`);
     }
   }
 
-  async findProductById(productId: string) {
+  async findProductById(productId: string): Promise<Product> {
     const product = await this.prisma.product.findUnique({
       where: { productId },
       include: {
@@ -142,179 +295,48 @@ export class ProductsService {
     return product;
   }
 
-  private async findAndValidateProduct(productId: string, userId: string) {
-    const product = await this.prisma.product.findUnique({
+  async updateProduct(productId: string, userId: string, updateProductDto: UpdateProductDto, files?: Express.Multer.File[]): Promise<Product> {
+    const product = await this.findAndValidateProduct(productId, userId);
+
+    if (updateProductDto.categoryId) {
+      await this.validateCategory(updateProductDto.categoryId);
+    }
+
+    const slug = await this.handleSlugUpdate(product, updateProductDto);
+    const uploadedImages = await this.handleImageUpdates(product, updateProductDto, files);
+
+    const { imagesToDelete, ...updateData } = updateProductDto;
+
+    if (updateData.price) {
+      updateData.price = typeof updateData.price === 'string' ? parseFloat(updateData.price) : updateData.price;
+    }
+
+    if (updateData.available !== undefined) {
+      updateData.available = typeof updateData.available === 'string' ? (updateData.available as string).toLowerCase() === 'true' : Boolean(updateData.available);
+    }
+
+    return this.prisma.product.update({
       where: { productId },
-      include: { images: true, owner: true },
-    });
-
-    if (!product) {
-      throw new NotFoundException(`Product with ID ${productId} not found!`);
-    }
-
-    const user = await this.prisma.user.findUnique({
-      where: { userId },
-    });
-
-    if (!user) {
-      throw new NotFoundException(`User with ID ${userId} not found!`);
-    }
-
-    if (product.ownerId !== userId && user.role !== RoleEnum.ADMIN) {
-      throw new ForbiddenException(`You don't have permission to update this product!`);
-    }
-    return product;
-  }
-  private async validateCategory(categoryId: string) {
-    const category = await this.prisma.category.findUnique({
-      where: { categoryId },
-    });
-
-    if (!category) {
-      throw new NotFoundException(`Category with ID ${categoryId} not found`);
-    }
-  }
-
-  private async handleSlugUpdate(product: Product, updateProductDto: UpdateProductDto): Promise<string> {
-    if (!updateProductDto.name || updateProductDto.name === product.name) {
-      return product.slug;
-    }
-
-    const slug = slugify(updateProductDto.name);
-    const nameTaken = await this.prisma.product.findFirst({
-      where: {
+      data: {
+        ...updateData,
         slug,
-        NOT: { productId: product.productId },
+        active: false,
+        images: {
+          create: uploadedImages?.map((img, index) => ({
+            url: img.url,
+            id: img.id,
+            isPrimary: index === 0 && product.images.length === 0,
+          })),
+        },
+      },
+      include: {
+        owner: true,
+        images: true,
+        category: {
+          include: { user: true },
+        },
       },
     });
-
-    if (nameTaken) {
-      throw new ConflictException(`Product name "${updateProductDto.name}" already exists`);
-    }
-
-    return slug;
-  }
-
-  private async handleImageUpdates(product: Product, updateProductDto: UpdateProductDto, files?: Express.Multer.File[]): Promise<any[]> {
-    if (updateProductDto.imagesToDelete?.length && product.images?.length) {
-      await this.deleteProductImages(product, updateProductDto.imagesToDelete);
-    }
-
-    if (!files?.length) {
-      return [];
-    }
-
-    if (product.images?.length) {
-      await this.deleteAllProductImages(product);
-    }
-
-    if (!product.cloudFolder) {
-      console.warn(`Product ${product.productId} has no cloudFolder, skipping new image upload.`);
-      return [];
-    }
-
-    return await this.cloudinaryService.uploadImages(files, product.cloudFolder);
-  }
-
-  private async deleteProductImages(product: Product, imageIds: string[]) {
-    if (!product.images) return;
-    const imagesToDelete = product.images.filter((img) => imageIds.includes(img.id));
-
-    await Promise.all([
-      ...imagesToDelete.map((img) => this.cloudinaryService.deleteImage(img.id)),
-      this.prisma.productImage.deleteMany({
-        where: {
-          id: { in: imageIds },
-          productId: product.productId,
-        },
-      }),
-    ]);
-  }
-
-  private async deleteAllProductImages(product: Product) {
-    if (!product.images) return;
-    try {
-      await Promise.all([
-        ...product.images.map((image) => this.cloudinaryService.deleteImage(image.id)),
-        this.prisma.productImage.deleteMany({
-          where: {
-            productId: product.productId,
-          },
-        }),
-      ]);
-    } catch (error) {
-      console.error('Error deleting existing images from Cloudinary during product update:', error);
-    }
-  }
-
-  async updateProduct(productId: string, userId: string, updateProductDto: UpdateProductDto, files?: Express.Multer.File[]): Promise<Product> {
-    try {
-      const product = await this.findAndValidateProduct(productId, userId);
-
-      if (updateProductDto.categoryId) {
-        await this.validateCategory(updateProductDto.categoryId);
-      }
-
-      const slug = await this.handleSlugUpdate(product, updateProductDto);
-      const uploadedImages = await this.handleImageUpdates(product, updateProductDto, files);
-
-      const { imagesToDelete, ...updateData } = updateProductDto;
-
-      if (updateData.price) {
-        updateData.price = typeof updateData.price === 'string' ? parseFloat(updateData.price) : updateData.price;
-      }
-
-      if (updateData.available !== undefined) {
-        updateData.available = typeof updateData.available === 'string' ? (updateData.available as string).toLowerCase() === 'true' : Boolean(updateData.available);
-      }
-
-      return await this.prisma.product.update({
-        where: { productId },
-        data: {
-          ...updateData,
-          slug,
-          active: false,
-          images: {
-            create: uploadedImages?.map((img, index) => ({
-              url: img.url,
-              id: img.id,
-              isPrimary: index === 0 && product.images.length === 0,
-            })),
-          },
-        },
-        include: {
-          owner: true,
-          images: true,
-          category: {
-            include: { user: true },
-          },
-        },
-      });
-    } catch (error) {
-      if (error instanceof NotFoundException || error instanceof ForbiddenException || error instanceof ConflictException) {
-        throw error;
-      }
-
-      if (error.code === 'P2002') {
-        throw new ConflictException('A product with this name already exists');
-      }
-
-      if (error.code === 'P2025') {
-        throw new NotFoundException('Product not found');
-      }
-
-      if (error.name === 'PrismaClientValidationError') {
-        throw new BadRequestException({
-          message: 'Invalid data provided',
-          details: error.message,
-        });
-      }
-
-      throw new BadRequestException({
-        message: 'Failed to update product',
-        details: error.message || 'Unknown error occurred during product update',
-      });
-    }
   }
 
   async toggleProductState(
@@ -343,93 +365,39 @@ export class ProductsService {
     return { message: `Product with ID ${productId} has been ${action} successfully.` };
   }
 
-  private async validateProductForDeletion(productId: string, userId: string, role: string) {
-    const product = await this.prisma.product.findUnique({
-      where: { productId },
-      include: { images: true, owner: true },
+  async deleteProduct(
+    productId: string,
+    userId: string,
+    role: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data?: { productId: string; deletedAt: string };
+  }> {
+    const product = await this.validateProductForDeletion(productId, userId, role);
+
+    return this.prisma.$transaction(async (prisma) => {
+      await this.deleteProductAssets(product);
+
+      if (product.images?.length) {
+        await prisma.productImage.deleteMany({
+          where: { productId },
+        });
+      }
+
+      await prisma.product.delete({
+        where: { productId },
+      });
+
+      return {
+        success: true,
+        message: `Product with ID ${productId} has been deleted successfully.`,
+        data: {
+          productId,
+          deletedAt: new Date().toISOString(),
+        },
+      };
     });
-
-    if (!product) {
-      throw new NotFoundException({
-        success: false,
-        message: `Product with ID ${productId} not found!`,
-        error: 'Not Found',
-      });
-    }
-
-    if (product.ownerId !== userId && role !== RoleEnum.ADMIN) {
-      throw new ForbiddenException({
-        success: false,
-        message: "You don't have permission to delete this product!",
-        error: 'Forbidden',
-      });
-    }
-
-    return product;
-  }
-
-  private async deleteProductAssets(product: Product) {
-    if (product.images?.length) {
-      try {
-        await Promise.all(product.images.map((image) => this.cloudinaryService.deleteImage(image.id)));
-      } catch (error) {
-        console.error('Error deleting images from Cloudinary:', error);
-        console.log('Continuing with product deletion despite image deletion error');
-      }
-    }
-
-    if (product.cloudFolder) {
-      try {
-        await this.cloudinaryService.deleteFolder(product.cloudFolder);
-      } catch (error) {
-        console.error('Error deleting folder from Cloudinary:', error);
-        console.log('Continuing with product deletion despite folder deletion error');
-      }
-    }
-  }
-
-  async deleteProduct(productId: string, userId: string, role: string): Promise<{ success: boolean; message: string; data?: any }> {
-    try {
-      const product = await this.validateProductForDeletion(productId, userId, role);
-
-      return await this.prisma.$transaction(async (prisma) => {
-        try {
-          await this.deleteProductAssets(product);
-
-          if (product.images?.length) {
-            await prisma.productImage.deleteMany({
-              where: { productId },
-            });
-          }
-
-          await prisma.product.delete({ where: { productId } });
-
-          return {
-            success: true,
-            message: `Product with ID ${productId} has been deleted successfully.`,
-            data: {
-              productId,
-              deletedAt: new Date().toISOString(),
-            },
-          };
-        } catch (error) {
-          console.error('Error in transaction:', error);
-          throw error;
-        }
-      });
-    } catch (error) {
-      console.error('Error in deleteProduct:', error);
-
-      if (error instanceof NotFoundException || error instanceof ForbiddenException || error instanceof BadRequestException) {
-        throw error;
-      }
-
-      throw new BadRequestException({
-        success: false,
-        message: 'Failed to delete product',
-        error: error.message || 'Unknown error occurred during product deletion',
-      });
-    }
   }
 
   async getCategoriesWithProductCount() {

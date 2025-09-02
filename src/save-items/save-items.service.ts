@@ -1,14 +1,11 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ValidationService } from '../common/validation/validation.service';
 import { PaginationService } from '../common/modules/pagination/pagination.service';
-import { PaginationDto } from '../common/dto/pagination.dto';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
 import { FilterProductsDto } from '../common/dto/filter-products.dto';
 import { FilterService } from '../common/modules/filter/filter.service';
-
-export const ENTITY_TYPES = ['post', 'product'] as const;
-export type SaveableEntity = (typeof ENTITY_TYPES)[number];
+import { ENTITY_TYPES, SaveableEntity, SavedEntity } from './entities/save-items.entity';
 
 @Injectable()
 export class SaveItemsService {
@@ -31,7 +28,14 @@ export class SaveItemsService {
     }
   }
 
-  async save(entityType: SaveableEntity, entityId: string, userId: string) {
+  async save(
+    entityType: SaveableEntity,
+    entityId: string,
+    userId: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     if (!ENTITY_TYPES.includes(entityType)) {
       throw new BadRequestException('Invalid entity type');
     }
@@ -53,7 +57,14 @@ export class SaveItemsService {
     };
   }
 
-  async unsave(entityType: SaveableEntity, entityId: string, userId: string) {
+  async unsave(
+    entityType: SaveableEntity,
+    entityId: string,
+    userId: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     if (!ENTITY_TYPES.includes(entityType)) {
       throw new BadRequestException('Invalid entity type');
     }
@@ -75,27 +86,18 @@ export class SaveItemsService {
     };
   }
 
-  async getSaved(entityType: SaveableEntity, userId: string, filterDto: FilterProductsDto): Promise<PaginatedResponse<any>> {
+  async getSaved(entityType: SaveableEntity, userId: string, filterDto: FilterProductsDto): Promise<PaginatedResponse<SavedEntity>> {
     const relation = this.getRelationField(entityType);
     const paginationOptions = this.paginationService.getPaginationOptions(filterDto);
 
-    const userWithCount = await this.prisma.user.findUnique({
-      where: { userId },
-      select: {
-        _count: {
-          select: { [relation]: true },
-        },
-      },
-    });
-    const total = userWithCount?._count?.[relation] || 0;
+    const total = await this.prisma.user
+      .findUnique({
+        where: { userId },
+        select: { _count: { select: { [relation]: true } } },
+      })
+      .then((res) => res?._count?.[relation] || 0);
 
-    let where = undefined;
-    let orderBy = undefined;
-    if (entityType === 'product') {
-      const filter = this.filterService.buildProductFilter(filterDto || {});
-      where = filter.where;
-      orderBy = filter.orderBy;
-    }
+    const filter = entityType === 'product' ? this.filterService.buildProductFilter(filterDto || {}) : {};
 
     const user = await this.prisma.user.findUnique({
       where: { userId },
@@ -103,11 +105,14 @@ export class SaveItemsService {
         [relation]: {
           skip: paginationOptions.skip,
           take: paginationOptions.limit,
-          ...(entityType === 'product' && where ? { where } : {}),
-          ...(entityType === 'product' && orderBy ? { orderBy } : {}),
+          ...(filter.where ? { where: filter.where } : {}),
+          ...(filter.orderBy ? { orderBy: filter.orderBy } : {}),
           ...(entityType === 'post'
             ? {
-                include: {
+                select: {
+                  postId: true,
+                  title: true,
+                  content: true,
                   user: {
                     select: {
                       userId: true,
@@ -117,15 +122,62 @@ export class SaveItemsService {
                       isOnline: true,
                     },
                   },
-                  images: true,
-                  products: true,
+                  products: {
+                    where: { active: true },
+                    select: {
+                      productId: true,
+                      name: true,
+                      price: true,
+                      slug: true,
+                      description: true,
+                      active: true,
+                      createdAt: true,
+                      updatedAt: true,
+                      categoryId: true,
+                      ownerId: true,
+                      userUserId: true,
+                    },
+                  },
+                  images: {
+                    select: {
+                      id: true,
+                      url: true,
+                      isPrimary: true,
+                    },
+                  },
+                },
+                where: {
+                  user: { isNot: null },
                 },
               }
-            : {}),
+            : {
+                select: {
+                  productId: true,
+                  name: true,
+                  price: true,
+                  slug: true,
+                  images: {
+                    select: { id: true, url: true, isPrimary: true },
+                  },
+                  category: {
+                    select: { categoryId: true, name: true },
+                  },
+                  owner: {
+                    select: {
+                      userId: true,
+                      name: true,
+                      email: true,
+                      role: true,
+                    },
+                  },
+                },
+              }),
         },
       },
     });
-    const data = user?.[relation] ?? [];
-    return this.paginationService.createPaginatedResponse<any>(data, total, paginationOptions);
+
+    const data = (user?.[relation] ?? []) as SavedEntity[];
+
+    return this.paginationService.createPaginatedResponse<SavedEntity>(data, total, paginationOptions);
   }
 }

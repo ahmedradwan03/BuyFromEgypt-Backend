@@ -2,21 +2,16 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationType } from '../common/enums/Notification.enum';
 import { NotificationService } from '../notification/notification.service';
+import { ValidationService } from '../common/validation/validation.service';
+import { CommentLike, UserPreview } from './entities/comment-like.entity';
 
 @Injectable()
 export class CommentLikesService {
   constructor(
     private prisma: PrismaService,
+    private validationService: ValidationService,
     private notificationService: NotificationService
   ) {}
-
-  private async validateComment(commentId: string) {
-    const comment = await this.prisma.comment.findUnique({
-      where: { commentId },
-    });
-    if (!comment) throw new NotFoundException('Comment not found');
-    return comment;
-  }
 
   private async getCommentWithAuthor(commentId: string) {
     const comment = await this.prisma.comment.findUnique({
@@ -62,10 +57,10 @@ export class CommentLikesService {
     });
   }
 
-  async likeComment(userId: string, commentId: string) {
-    await this.validateComment(commentId);
-    const existing = await this.getExistingReaction(userId, commentId);
+  async likeComment(userId: string, commentId: string): Promise<{ message: string } | CommentLike> {
+    await this.validationService.validateCommentExists(commentId);
     const comment = await this.getCommentWithAuthor(commentId);
+    const existing = await this.getExistingReaction(userId, commentId);
     const recipientId = comment.user.userId;
     const isSelf = userId === recipientId;
 
@@ -79,7 +74,6 @@ export class CommentLikesService {
             comment: true,
           },
         });
-
         if (!isSelf) {
           await this.sendNotification({
             type: NotificationType.LIKE_COMMENT,
@@ -119,8 +113,8 @@ export class CommentLikesService {
     return created;
   }
 
-  async dislikeComment(userId: string, commentId: string) {
-    await this.validateComment(commentId);
+  async dislikeComment(userId: string, commentId: string): Promise<{ message: string } | CommentLike> {
+    await this.validationService.validateCommentExists(commentId);
     const existing = await this.getExistingReaction(userId, commentId);
     const comment = await this.getCommentWithAuthor(commentId);
     const recipientId = comment.user.userId;
@@ -176,8 +170,8 @@ export class CommentLikesService {
     return created;
   }
 
-  async removeReaction(userId: string, commentId: string) {
-    return this.prisma.commentLike.delete({
+  async removeReaction(userId: string, commentId: string): Promise<{ message: string }> {
+    await this.prisma.commentLike.delete({
       where: {
         userId_commentId: {
           userId,
@@ -185,27 +179,30 @@ export class CommentLikesService {
         },
       },
     });
+
+    return { message: 'Reaction removed successfully' };
   }
 
-  async getCommentReactions(commentId: string) {
-    await this.validateComment(commentId);
-    return this.prisma.commentLike.findMany({
+  async getCommentReactions(commentId: string): Promise<UserPreview[]> {
+    await this.validationService.validateCommentExists(commentId);
+    const likes = await this.prisma.commentLike.findMany({
       where: { commentId },
       select: {
         user: { select: this.getUserSelect() },
       },
     });
+    return likes.map((like) => like.user);
   }
 
-  async getCommentLikesCount(commentId: string) {
-    await this.validateComment(commentId);
+  async getCommentLikesCount(commentId: string): Promise<number> {
+    await this.validationService.validateCommentExists(commentId);
     return this.prisma.commentLike.count({
       where: { commentId, isDislike: false },
     });
   }
 
-  async getCommentDislikesCount(commentId: string) {
-    await this.validateComment(commentId);
+  async getCommentDislikesCount(commentId: string): Promise<number> {
+    await this.validationService.validateCommentExists(commentId);
     return this.prisma.commentLike.count({
       where: { commentId, isDislike: true },
     });

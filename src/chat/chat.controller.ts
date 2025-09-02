@@ -3,6 +3,7 @@ import { ChatService } from './chat.service';
 import { GetMessagesDto } from './dto/get-messages.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateMessageStatusDto } from './dto/update-message-status.dto';
+import { MarkAsReadDto } from './dto/mark-as-read.dto';
 
 @Controller('chat')
 export class ChatController {
@@ -34,8 +35,8 @@ export class ChatController {
   }
 
   @Patch('markAsRead')
-  async markAsRead(@Body('conversationId') conversationId: string, @Body('userId') userId: string) {
-    return this.chatService.markAllMessagesAsRead(conversationId, userId);
+  async markAsRead(@Body() dto: MarkAsReadDto) {
+    return this.chatService.markAllMessagesAsRead(dto.conversationId, dto.userId);
   }
 
   @Get('onlineStatus')

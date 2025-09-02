@@ -26,7 +26,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { UserTypeGuard } from '../common/guards/user-type.guard';
 import { UserType } from '../common/decorators/user-type.decorator';
-import { TypeEnum } from '../common/enums/user-type.enum';
+import { UserTypeEnum } from '../common/enums/user-type.enum';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RoleEnum } from '@prisma/client';
@@ -36,6 +36,7 @@ import { FilterProductsDto } from '../common/dto/filter-products.dto';
 import { PaginatedResponse } from '../common/interfaces/pagination.interface';
 import { Product } from './entities/product.entity';
 import { SaveItemsService } from '../save-items/save-items.service';
+import { AuthenticatedRequest } from '../auth/interfaces/auth-request.interface';
 
 @ApiTags('Products')
 @Controller('products')
@@ -45,16 +46,14 @@ export class ProductsController {
     private saveItemsService: SaveItemsService
   ) {}
 
-  @UserType(`${TypeEnum.EXPORTER}`)
+  @UserType(UserTypeEnum.EXPORTER)
   @UseGuards(AuthGuard, UserTypeGuard)
   @Post()
   @UseInterceptors(FilesInterceptor('images', 10))
   create(
     @UploadedFiles() files: Express.Multer.File[],
     @Req()
-    req: Request & {
-      user: { userId: string };
-    },
+    req: AuthenticatedRequest,
     @Body() createProductDto: CreateProductDto
   ) {
     return this.productsService.createProduct(req.user.userId, createProductDto, files);
@@ -89,18 +88,7 @@ export class ProductsController {
     description: 'Sort order',
   })
   async findAll(@Query() filters: FilterProductsDto): Promise<PaginatedResponse<Product>> {
-    try {
-      return await this.productsService.findAll(filters);
-    } catch (error) {
-      throw new HttpException(
-        {
-          statusCode: HttpStatus.BAD_REQUEST,
-          message: error.message,
-          error: error.name,
-        },
-        HttpStatus.BAD_REQUEST
-      );
-    }
+    return await this.productsService.findAll(filters);
   }
 
   @Get('/categories-with-count')
@@ -115,9 +103,7 @@ export class ProductsController {
   update(
     @UploadedFiles() files: Express.Multer.File[],
     @Req()
-    req: Request & {
-      user: { userId: string };
-    },
+    req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() updateProductDto: UpdateProductDto
   ) {
@@ -129,9 +115,7 @@ export class ProductsController {
   @UseGuards(AuthGuard, RolesGuard)
   async toggleProductState(
     @Req()
-    req: Request & {
-      user: { userId: string };
-    },
+    req: AuthenticatedRequest,
     @Param('id') productId: string,
     @Param('action') action: 'approve' | 'deactivate'
   ): Promise<{ message: string }> {
@@ -209,38 +193,15 @@ export class ProductsController {
       },
     },
   })
-  async remove(@Req() req: Request & { user: { userId: string; role: string } }, @Param('id') id: string) {
-    try {
-      if (!req.user || !req.user.userId) {
-        throw new UnauthorizedException({
-          success: false,
-          message: 'User is not authenticated',
-          error: 'Unauthorized',
-        });
-      }
-
-      if (!id) {
-        throw new BadRequestException({
-          success: false,
-          message: 'Product ID is required',
-          error: 'Bad Request',
-        });
-      }
-
-      return await this.productsService.deleteProduct(id, req.user.userId, req.user.role);
-    } catch (error) {
-      console.error('Error in remove endpoint:', error);
-      throw error;
-    }
+  async remove(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return await this.productsService.deleteProduct(id, req.user.userId, req.user.role);
   }
 
   @UseGuards(AuthGuard)
   @Post(':id/save')
   savePost(
     @Req()
-    req: Request & {
-      user: { userId: string };
-    },
+    req: AuthenticatedRequest,
     @Param('id') id: string
   ) {
     return this.saveItemsService.save('product', id, req.user.userId);
@@ -250,9 +211,7 @@ export class ProductsController {
   @Delete(':id/save')
   unsavePost(
     @Req()
-    req: Request & {
-      user: { userId: string };
-    },
+    req: AuthenticatedRequest,
     @Param('id') id: string
   ) {
     return this.saveItemsService.unsave('product', id, req.user.userId);
@@ -260,7 +219,7 @@ export class ProductsController {
 
   @UseGuards(AuthGuard)
   @Get('saved')
-  getSavedPosts(@Req() req: Request & { user: { userId: string } }, @Query() filterDto: FilterProductsDto) {
+  getSavedPosts(@Req() req: AuthenticatedRequest, @Query() filterDto: FilterProductsDto) {
     return this.saveItemsService.getSaved('product', req.user.userId, filterDto);
   }
 

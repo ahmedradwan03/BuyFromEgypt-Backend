@@ -46,7 +46,22 @@ export class FollowService {
 
     const follow = await this.prisma.follower.create({
       data: { followerId, followingId },
-      include: { follower: true, following: true },
+      include: {
+        follower: {
+          select: {
+            userId: true,
+            name: true,
+            profileImage: true,
+          },
+        },
+        following: {
+          select: {
+            userId: true,
+            name: true,
+            profileImage: true,
+          },
+        },
+      },
     });
 
     await this.notificationService.createAndSend({
@@ -67,35 +82,30 @@ export class FollowService {
     };
   }
 
-  async getFollowers(userId: string): Promise<Follow[]> {
+  async getFollowList(userId: string, role: 'followers' | 'following'): Promise<Follow[]> {
     await this.validationService.validateUserExists(userId);
-    return this.prisma.follower
-      .findMany({
-        where: { followingId: userId },
-        select: { followId: true, follower: true, following: true, createdAt: true },
-      })
-      .then((follows) =>
-        follows.map((follow) => ({
-          id: follow.followId,
-          follower: follow.follower,
-          createdAt: follow.createdAt,
-        }))
-      );
-  }
 
-  async getFollowing(userId: string): Promise<Follow[]> {
-    await this.validationService.validateUserExists(userId);
-    return this.prisma.follower
-      .findMany({
-        where: { followerId: userId },
-        select: { followId: true, follower: true, following: true, createdAt: true },
-      })
-      .then((follows) =>
-        follows.map((follow) => ({
-          id: follow.followId,
-          following: follow.following,
-          createdAt: follow.createdAt,
-        }))
-      );
+    const isFollowers = role === 'followers';
+
+    const follows = await this.prisma.follower.findMany({
+      where: isFollowers ? { followingId: userId } : { followerId: userId },
+      select: {
+        followId: true,
+        [isFollowers ? 'follower' : 'following']: {
+          select: {
+            userId: true,
+            name: true,
+            profileImage: true,
+          },
+        },
+        createdAt: true,
+      },
+    });
+
+    return follows.map((follow) => ({
+      id: follow.followId,
+      user: isFollowers ? follow.follower : follow.following,
+      createdAt: follow.createdAt,
+    }));
   }
 }

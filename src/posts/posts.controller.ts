@@ -5,10 +5,9 @@ import { UpdatePostDto } from './dto/update-post.dto';
 import { ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { Request } from 'express';
-import { PostTs } from './entities/post.entity';
 import { SaveItemsService } from '../save-items/save-items.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { AuthenticatedRequest } from '../auth/interfaces/auth-request.interface';
 
 @Controller('posts')
 export class PostsController {
@@ -29,11 +28,9 @@ export class PostsController {
   create(
     @UploadedFiles() files: Express.Multer.File[],
     @Req()
-    req: Request & {
-      user: { userId: string };
-    },
+    req: AuthenticatedRequest,
     @Body() createPostDto: CreatePostDto
-  ): Promise<PostTs> {
+  ) {
     return this.postsService.create(req.user.userId, createPostDto, files);
   }
 
@@ -58,7 +55,7 @@ export class PostsController {
   update(
     @UploadedFiles() files: Express.Multer.File[],
     @Req()
-    req: Request & { user: { userId: string } },
+    req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() updatePostDto: UpdatePostDto
   ) {
@@ -74,7 +71,7 @@ export class PostsController {
   @ApiResponse({ status: HttpStatus.INTERNAL_SERVER_ERROR, description: 'Internal server error' })
   remove(
     @Req()
-    req: Request & { user: { userId: string; role: string } },
+    req: AuthenticatedRequest,
     @Param('id') id: string
   ) {
     return this.postsService.remove(id, req.user.userId, req.user.role);
@@ -89,9 +86,7 @@ export class PostsController {
   @Post(':id/save')
   savePost(
     @Req()
-    req: Request & {
-      user: { userId: string };
-    },
+    req: AuthenticatedRequest,
     @Param('id') id: string
   ) {
     return this.saveItemsService.save('post', id, req.user.userId);
@@ -101,9 +96,7 @@ export class PostsController {
   @Delete(':id/save')
   unsavePost(
     @Req()
-    req: Request & {
-      user: { userId: string };
-    },
+    req: AuthenticatedRequest,
     @Param('id') id: string
   ) {
     return this.saveItemsService.unsave('post', id, req.user.userId);
@@ -113,9 +106,7 @@ export class PostsController {
   @Get('saved')
   getSavedPosts(
     @Req()
-    req: Request & {
-      user: { userId: string };
-    },
+    req: AuthenticatedRequest,
     @Query() paginationDto: PaginationDto
   ) {
     return this.saveItemsService.getSaved('post', req.user.userId, paginationDto);

@@ -3,6 +3,7 @@ import { NotificationGateway } from './notification.gateway';
 import { NotificationTemplates } from './notification.config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ValidationService } from '../common/validation/validation.service';
+import { Notification } from './entities/Notification.entities';
 
 @Injectable()
 export class NotificationService {
@@ -12,7 +13,7 @@ export class NotificationService {
     private validationService: ValidationService
   ) {}
 
-  async createAndSend({ type, senderId, recipientId, data }: { type: string; senderId: string; recipientId: string; data: Record<string, any> }) {
+  async createAndSend({ type, senderId, recipientId, data }: { type: string; senderId: string; recipientId: string; data: Record<string, any> }): Promise<void> {
     if (senderId === recipientId) return;
 
     const template = NotificationTemplates[type];
@@ -46,7 +47,7 @@ export class NotificationService {
     });
   }
 
-  async getMyNotifications(userId: string) {
+  async getMyNotifications(userId: string): Promise<Notification[]> {
     await this.validationService.validateUserExists(userId);
 
     const notifications = await this.prisma.notification.findMany({

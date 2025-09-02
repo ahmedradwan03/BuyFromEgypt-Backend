@@ -2,12 +2,8 @@ import { Controller, Post, Delete, Get, Param, Req, UseGuards } from '@nestjs/co
 import { CommentLikesService } from './comment-likes.service';
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { Request } from 'express';
+import { AuthenticatedRequest } from '../auth/interfaces/auth-request.interface';
 
-interface AuthenticatedRequest extends Request {
-  user: {
-    userId: string;
-  };
-}
 
 @Controller('comment-likes')
 @UseGuards(AuthGuard)

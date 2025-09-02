@@ -1,26 +1,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSearchHistoryDto, GetSearchHistoryDto } from './dto/search-history.dto';
-
-export const SEARCH_TYPES = ['users', 'products', 'messages'] as const;
-
-export type SearchType = (typeof SEARCH_TYPES)[number];
+import { GlobalSearchResult, SEARCH_TYPES, SearchType } from './entities/search.entity';
+import { SearchHistory } from './entities/searchHistory.entity';
 
 @Injectable()
 export class SearchService {
   constructor(private prisma: PrismaService) {}
-
-  async globalSearch(term: string, type: SearchType, userId: string) {
-    this.validateSearchType(type);
-    await this.createSearchHistory({ query: term, type }, userId);
-
-    const searchMap = {
-      users: () => this.searchUser(term),
-      products: () => this.searchProduct(term),
-    };
-
-    return searchMap[type]();
-  }
 
   private validateSearchType(type: string): void {
     if (!SEARCH_TYPES.includes(type as SearchType)) {
@@ -63,7 +49,19 @@ export class SearchService {
     });
   }
 
-  async createSearchHistory(dto: CreateSearchHistoryDto, userId: string) {
+  async globalSearch(term: string, type: SearchType, userId: string): Promise<GlobalSearchResult> {
+    this.validateSearchType(type);
+    await this.createSearchHistory({ query: term, type }, userId);
+
+    const searchMap = {
+      users: () => this.searchUser(term),
+      products: () => this.searchProduct(term),
+    };
+
+    return searchMap[type]();
+  }
+
+ private async createSearchHistory(dto: CreateSearchHistoryDto, userId: string): Promise<SearchHistory> {
     return this.prisma.searchHistory.create({
       data: {
         query: dto.query,
@@ -73,7 +71,7 @@ export class SearchService {
     });
   }
 
-  async getSearchHistory(userId: string, filters?: GetSearchHistoryDto) {
+  async getSearchHistory(userId: string, filters?: GetSearchHistoryDto): Promise<SearchHistory[]> {
     const where = {
       userId,
       ...(filters?.type && { type: filters.type }),
@@ -90,9 +88,7 @@ export class SearchService {
 
   async clearSearchHistory(userId: string) {
     return this.prisma.searchHistory.deleteMany({
-      where: {
-        userId,
-      },
+      where: { userId },
     });
   }
 }

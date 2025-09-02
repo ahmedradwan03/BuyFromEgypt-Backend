@@ -15,9 +15,6 @@ export class ChatbotController {
   @Post('chat/reset')
   @HttpCode(HttpStatus.OK)
   async resetConversation(@Query('session_id') sessionId: string): Promise<any> {
-    if (!sessionId) {
-      throw new BadRequestException('Session ID is required as a query parameter.');
-    }
     return this.chatbotService.resetConversation(sessionId);
   }
 

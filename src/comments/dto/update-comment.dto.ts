@@ -1,11 +1,4 @@
-import { IsString, IsNotEmpty } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { PickType } from '@nestjs/swagger';
+import { CreateCommentDto } from './create-comment.dto';
 
-export class UpdateCommentDto {
-  @ApiProperty({
-    example: 'Updated comment content',
-  })
-  @IsNotEmpty({ message: 'Content is required' })
-  @IsString({ message: 'Content must be a string' })
-  content: string;
-}
+export class UpdateCommentDto extends PickType(CreateCommentDto, ['content'] as const) {}

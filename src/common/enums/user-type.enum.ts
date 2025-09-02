@@ -1,4 +1,4 @@
-export enum TypeEnum {
+export enum UserTypeEnum {
   EXPORTER = 'EXPORTER',
   IMPORTER = 'IMPORTER',
 }

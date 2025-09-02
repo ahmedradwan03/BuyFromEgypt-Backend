@@ -1,14 +1,18 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserPreferenceDto } from './dto/user-preference.dto';
+import { ValidationService } from '../common/validation/validation.service';
 
 @Injectable()
 export class UserPreferenceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private validationService: ValidationService
+  ) {}
 
-  async upsertPreference(dto: UserPreferenceDto) {
-    const { userId, ...data } = dto;
-
+  async upsertPreference(userPreferenceDto: UserPreferenceDto) {
+    const { userId, ...data } = userPreferenceDto;
+    await this.validationService.validateUserExists(userId);
     return this.prisma.userPreference.upsert({
       where: { userId },
       update: { ...data },
@@ -17,6 +21,7 @@ export class UserPreferenceService {
   }
 
   async getMyPreference(userId: string) {
+    await this.validationService.validateUserExists(userId);
     return this.prisma.userPreference.findUnique({
       where: { userId },
     });

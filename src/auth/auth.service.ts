@@ -1,10 +1,7 @@
 import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-
 import { RegisterDto } from './dtos/Register.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
-import { User } from '@prisma/client';
 import { LoginDto } from './dtos/Login.dto';
 import { JwtService } from '@nestjs/jwt';
 import { RequestResetDto } from './dtos/RequestReset.dto';
@@ -12,6 +9,7 @@ import { VerifyOtpDto } from './dtos/VerifyOTP.dto';
 import { ResetPasswordDto } from './dtos/ResetPassword.dto';
 import { MailService } from '../MailService/mail.service';
 import * as crypto from 'crypto';
+import { User } from '../users/entities/user.entity';
 
 @Injectable()
 export class AuthService {
@@ -22,14 +20,6 @@ export class AuthService {
   ) {}
 
   async register(registerDto: RegisterDto): Promise<{ user: User; message: string }> {
-    // Validate required fields
-    const requiredFields = ['name', 'email', 'password', 'phoneNumber', 'type', 'taxId', 'nationalId', 'country', 'age'];
-    const missingFields = requiredFields.filter((field) => !registerDto[field]);
-
-    if (missingFields.length > 0) {
-      throw new UnauthorizedException(`Missing required fields: ${missingFields.join(', ')}`);
-    }
-
     const existingUser = await this.prisma.user.findFirst({
       where: {
         OR: [
@@ -40,59 +30,41 @@ export class AuthService {
           { registrationNumber: registerDto.registrationNumber },
         ],
       },
-      select: {
-        email: true,
-        phoneNumber: true,
-        taxId: true,
-        nationalId: true,
-        registrationNumber: true,
+    });
+
+    const conflicts = {
+      email: 'Email is already registered',
+      phoneNumber: 'Phone number is already registered',
+      taxId: 'Tax ID is already registered',
+      nationalId: 'National ID is already registered',
+      registrationNumber: 'Registration number is already registered',
+    };
+
+    for (const [field, message] of Object.entries(conflicts)) {
+      if (existingUser?.[field] === registerDto[field]) {
+        throw new UnauthorizedException(message);
+      }
+    }
+
+    const hashedPassword: string = await bcrypt.hash(registerDto.password, 10);
+
+    const newUser = await this.prisma.user.create({
+      data: {
+        ...registerDto,
+        password: hashedPassword,
+        role: 'USER',
       },
     });
 
-    if (existingUser) {
-      if (existingUser.email === registerDto.email) {
-        throw new UnauthorizedException('Email is already registered');
-      }
-      if (existingUser.phoneNumber === registerDto.phoneNumber) {
-        throw new UnauthorizedException('Phone number is already registered');
-      }
-      if (existingUser.taxId === registerDto.taxId) {
-        throw new UnauthorizedException('Tax ID is already registered');
-      }
-      if (existingUser.nationalId === registerDto.nationalId) {
-        throw new UnauthorizedException('National ID is already registered');
-      }
-      if (existingUser.registrationNumber === registerDto.registrationNumber) {
-        throw new UnauthorizedException('Registration number is already registered');
-      }
-    }
+    const { password, ...safeUser } = newUser;
 
-    try {
-      const hashedPassword: string = await bcrypt.hash(registerDto.password, 10);
-
-      const newUser = await this.prisma.user.create({
-        data: {
-          ...registerDto,
-          password: hashedPassword,
-          role: 'USER',
-        },
-      });
-
-      return {
-        message: 'Your account has been successfully created and is currently under review. You will be notified once the verification process is complete.',
-        user: newUser,
-      };
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientValidationError) {
-        throw new UnauthorizedException('Invalid data provided. Please check all required fields and their formats.');
-      }
-      throw error;
-    }
+    return {
+      message: 'Your account has been successfully created and is currently under review. You will be notified once the verification process is complete.',
+      user: safeUser,
+    };
   }
 
-  async login(
-    loginDto: LoginDto
-  ): Promise<{ user: { userId: string; name: string; email: string; role: string; profileImage: string | null; type: string; active: boolean; emailVerified: boolean }; token: string }> {
+  async login(loginDto: LoginDto): Promise<{ user: Partial<User>; token: string }> {
     const user = await this.prisma.user.findFirst({
       where: { email: loginDto.email },
       select: {
@@ -121,11 +93,14 @@ export class AuthService {
       throw new ForbiddenException("Account under review. You'll be notified upon verification.");
     }
 
-    const { userId, name, email, role, profileImage, type, active, emailVerified } = user;
-    const payload = { userId: user.userId, email: user.email, active: user.active, role: user.role, type: user.type };
+    const payload = { userId: user.userId, email: user.email, role: user.role, type: user.type, active: user.active };
     const token = await this.jwtService.signAsync(payload);
+    const { password, ...safeUser } = user;
 
-    return { user: { userId, name, email, role, profileImage, type, active, emailVerified }, token };
+    return {
+      user: safeUser,
+      token,
+    };
   }
 
   async requestReset(requestResetDto: RequestResetDto): Promise<{ message: string }> {
@@ -223,35 +198,17 @@ export class AuthService {
       },
     });
 
-    let resetLink: string;
-    if (header === 'web') {
-      resetLink = `https://buy-from-egypt-frontend-2amd.vercel.app/auth/update-password?token=${OTPGen}`;
-    } else {
-      resetLink = `http://localhost:${process.env.PORT ?? 3000}/reset-password?token=${OTPGen}`;
-    }
+    const isWeb = header === 'web';
+    const baseURL = isWeb ? process.env.SITE_LINK : `http://localhost:${process.env.PORT ?? 3000}`;
+    const path = isWeb ? '/auth/update-password' : '/reset-password';
+
+    const resetLink = `${baseURL}${path}?token=${OTPGen}`;
 
     if (identifier.includes('@')) {
       await this.mailService.sendResetLink(user.email, resetLink);
     }
 
     return { message: 'OTP verified successfully. Reset link sent.' };
-  }
-
-  async validateResetToken(token: string): Promise<boolean> {
-    const otpRecord = await this.prisma.otp.findFirst({
-      where: { otpCode: token },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (!otpRecord) {
-      throw new UnauthorizedException('Invalid reset token.');
-    }
-
-    if (new Date() > otpRecord.expiresAt) {
-      throw new UnauthorizedException('Reset token has expired.');
-    }
-
-    return true;
   }
 
   async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<{ message: string }> {

@@ -2,12 +2,7 @@ import { Controller, Get, Post, Delete, Param, Body, UseGuards, Req, Request } f
 import { FollowService } from './follow.service';
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { FollowUserDto } from './dto/followUser.dto';
-
-interface AuthenticatedRequest extends Request {
-  user: {
-    userId: string;
-  };
-}
+import { AuthenticatedRequest } from '../auth/interfaces/auth-request.interface';
 
 @Controller('follow')
 export class FollowController {
@@ -20,24 +15,26 @@ export class FollowController {
   }
 
   @Get('followers/:userId')
-  async getFollowers(@Param('userId') userId: string) {
-    return this.followService.getFollowers(userId);
-  }
-
-  @Get('following/:userId')
-  async getFollowing(@Param('userId') userId: string) {
-    return this.followService.getFollowing(userId);
+  @UseGuards(AuthGuard)
+  async getFollowers(@Param('userId') userId: string, @Req() req: AuthenticatedRequest) {
+    return this.followService.getFollowList(userId, 'followers');
   }
 
   @Get('followers')
   @UseGuards(AuthGuard)
-  async getCurrentUserFollowers(@Req() req: AuthenticatedRequest) {
-    return this.followService.getFollowers(req.user.userId);
+  async getFollowersSelf(@Req() req: AuthenticatedRequest) {
+    return this.followService.getFollowList(req.user.userId, 'followers');
+  }
+
+  @Get('following/:userId')
+  @UseGuards(AuthGuard)
+  async getFollowing(@Param('userId') userId: string, @Req() req: AuthenticatedRequest) {
+    return this.followService.getFollowList(userId, 'following');
   }
 
   @Get('following')
   @UseGuards(AuthGuard)
-  async getCurrentUserFollowing(@Req() req: AuthenticatedRequest) {
-    return this.followService.getFollowing(req.user.userId);
+  async getFollowingSelf(@Req() req: AuthenticatedRequest) {
+    return this.followService.getFollowList(req.user.userId, 'following');
   }
 }
