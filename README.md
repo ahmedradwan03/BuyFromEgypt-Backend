@@ -35,7 +35,7 @@ It provides **RESTful APIs and real-time communication** for managing products, 
 ## Features
 
 - 🔑 User authentication & authorization (JWT)
-- 👨‍💻 Role-based access control (Admin / Supplier / Customer)
+- 👨‍💻 Role-based access control (Admin / User / Importer / Exporter)
 - 📦 Product management (CRUD, image uploads, slugs)
 - 🛒 Cart & wishlist management
 - 💳 Orders and checkout integration
