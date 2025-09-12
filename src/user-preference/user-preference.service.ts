@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserPreferenceDto } from './dto/user-preference.dto';
 import { ValidationService } from '../common/validation/validation.service';
